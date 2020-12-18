@@ -1,0 +1,63 @@
+#enter the machine names in between quotes and commas like the below example, then run the script
+$machines= 'Computer1','Computer2','Computer3'
+
+
+foreach($machine in $machines){
+remove-Variable os,cpucore,os,ram,cpu,numberofcores,localvolumes,disks,obj -ErrorAction Ignore
+Get-CimSession | Remove-CimSession
+New-CimSession -ComputerName $machine
+#cores
+    $numberofcores = Get-Cimsession $machine | Get-CimInstance -Classname win32_processor -ErrorAction stop | select numberofcores
+	$cpuCore = 0
+	
+	foreach ($cpu in $numberofcores)
+	{
+		$cpuCore += $cpu.numberOfCores
+	}
+
+$info=invoke-command $machine {systeminfo}
+#ram
+$ram=($info | Select-String 'Total Physical Memory:').ToString().Split(':')[1]
+#cpu speed
+$cpu=($info | Select-String "~" )[1].tostring().split("~")[1]
+#os
+$os=($info | Select-String "OS Name:").ToString().Split(':')[1]
+#patch
+$version=($info | Select-String   'OS Version:')[0].ToString().Split(':')[1]
+
+#obj
+$obj = [pscustomobject] @{
+        Machine = $machine
+        Operating_System = $os.trim() ;	
+        Version = $version.trim() ;	
+        Cores = $cpuCore ;
+        Ram = $ram.trim() ;
+        CPU = $cpu.trim() ;
+        
+
+	}
+#diskspace
+
+
+	$localVolumes = Get-Cimsession $machine | Get-CimInstance -Classname win32_volume
+	$Disks = @{ }
+	foreach ($vol in $localVolumes)
+	{
+		
+		if ($vol.DriveLetter -ne $null){
+			$d = $vol.DriveLetter[0]
+			
+			$diskspace = (Get-Cimsession $machine | Get-CimInstance -Classname win32_logicaldisk -filter "deviceid='$d`:'" | Select @{ Expression = { [math]::Round($_.Freespace/1GB, 2) }; Label = "$d" })
+			
+			if ($diskspace."$d" -ne 0){
+                $diskspace=$diskspace."$d".tostring()+"GB"
+              
+			add-Member -inputobj $obj -MemberType NoteProperty -Name "DiskSpace $d Free" -Value $diskspace.ToString() -Force
+			}
+		}
+	}
+
+
+
+$obj
+    }
