@@ -1,0 +1,68 @@
+#run this before declaring variables
+Remove-Variable * -ErrorAction SilentlyContinue
+$automaticVariables= Get-Variable
+
+#declare variables
+$variablesFile='C:\Environment.ps1'
+$showcontext=$false
+$startingDirectory='C:\Scripts'
+$avoidFolders='userlog','website','Deprecated'
+
+#declare functions
+function grab-variables {
+    compare-object (Get-Variable) $automaticVariables -Property name -PassThru |where -Property Name -ne "AutomaticVariables"
+    }
+function find-string{
+    param (
+    $startingfolder='C:\Scripts',
+    [array]$avoidFolders=@(),
+    [array]$strings=@(''),
+    $showcontext=$false
+    )
+    $unusedVariables=$strings
+    foreach($string in $strings){
+        write-host "Looking for variable `$$($string.name)..." -ForegroundColor Green
+        $files=dir $startingfolder -Recurse -Include *.ps1,*.txt
+        foreach($folder in $avoidfolders){
+            $files=$files|? PSParentPath  -inotlike *$folder*
+        }
+        foreach($file in $files){
+            $test=get-content $file.PSPath|select-string -SimpleMatch "`$$($string.name)"
+            if($test){
+                $unusedVariables=$unusedVariables|? {$_.name -ne $string.name}
+                write-host -ForegroundColor Cyan $file.fullname $test.LineNumber
+                if($showcontent -eq $true){
+                get-content $file.PSPath|select-string -SimpleMatch $string.name -Context 2,2
+                }
+            }
+            else{
+                $test=get-content $file.PSPath|select-string -SimpleMatch "`$using:$($string.name)"
+                
+                if($test){
+                    $unusedVariables=$unusedVariables|? {$_.name -ne $string.name}
+                    write-host -ForegroundColor Cyan $file.fullname $test.LineNumber
+                    if($showcontent -eq $true){
+                    get-content $file.PSPath|select-string -SimpleMatch $string.name -Context 2,2
+                    }
+                }
+            }
+
+        }
+    }
+    Write-Host "The following variables have gone unused: " -ForegroundColor Yellow
+    foreach($n in $unusedvariables.name){
+    write-host "`$$n" -ForegroundColor Red
+    }
+    $script:unusedVariables=$unusedvariables
+}
+
+
+#set variables from file
+. $variablesFile
+#grab variables loaded (filtering out automatic variables)
+$variables=grab-variables
+
+#find and list variables, recursing folders as needed
+
+find-string -strings $variables -startingfolder $startingdirectory -showcontext $showcontext -avoidFolders $avoidFolders
+
